@@ -18,6 +18,7 @@
                 <option label="pygatt" value="pygatt"/>
             </options>
         </param>
+        <param field="Mode4" label="Polling interval (minutes, 30 mini)" width="40px" required="true" default="60"/>
     </params>
 </plugin>
 """
@@ -33,6 +34,8 @@ import sys
 sys.path.append("/usr/local/lib/python3.5/dist-packages")
 import shelve
 import os
+from datetime import datetime
+from datetime import timedelta
 from parrot_flower import parrot_flower_scanner
 import parrot_flower
 try:
@@ -49,8 +52,12 @@ class BasePlugin:
 
     def __init__(self):
         self.macs = []
-        self.currentlyPolling = 100
+        self.backend = GatttoolBackend
+        self.currentlyPolling = 255
+        self.nextupdate = datetime.now()
+        self.pollinterval = 60  # default polling interval in minutes
         return
+
 
     def onStart(self):
         #Domoticz.Debugging(1)
@@ -59,11 +66,6 @@ class BasePlugin:
             Domoticz.Error("Error loading Parrot Flower libraries")
 
         Domoticz.Debug("Parrot Flower - devices made so far (max 255): " + str(len(Devices)))
-
-        # create master toggle switch
-        if 1 not in Devices:
-            Domoticz.Log("Creating the master Parrot Flower Power & Pot poll switch. Flip it to poll the sensors.")
-            Domoticz.Device(Name="Flip to update Parrot Flower Power & Pot", Unit=1, TypeName="Switch", Image=9, Used=1).Create()
 
         # get the mac addresses of the sensors
         if Parameters["Mode1"] == 'auto':
@@ -83,106 +85,123 @@ class BasePlugin:
         elif Parameters["Mode3"] == 'pygatt':
             self.backend = PygattBackend
 
+        # check polling interval parameter
+        try:
+            temp = int(Parameters["Mode4"])
+        except:
+            Domoticz.Error("Invalid polling interval parameter")
+        else:
+            if temp < 30:
+                temp = 30  # minimum polling interval
+                Domoticz.Error("Specified polling interval too short: changed to 30 minutes")
+            elif temp > 1440:
+                temp = 1440  # maximum polling interval is 1 day
+                Domoticz.Error("Specified polling interval too long: changed to 1440 minutes (24 hours)")
+            self.pollinterval = temp
+        Domoticz.Log("Using polling interval of {} minutes".format(str(self.pollinterval)))
+
+
     def onStop(self):
         Domoticz.Log("onStop called")
+
 
     def onConnect(self, Connection, Status, Description):
         Domoticz.Log("onConnect called")
 
+
     def onMessage(self, Connection, Data, Status, Extra):
         Domoticz.Log("onMessage called")
+
 
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Log("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
 
-        Domoticz.Log("amount of Parrot Flower Power & Pot to now ask for data: " + str(len(self.macs)))
 
-        # flip the switch icon, and then get the plant data.
-        if Unit == 1:
-            Devices[Unit].Update(nValue=1,sValue="On")
-
+    def onHeartbeat(self):
+        now = datetime.now()
+        if now >= self.nextupdate:
+            self.nextupdate = now + timedelta(minutes=self.pollinterval)
             #By setting this to 0, the polling function will run.
             self.currentlyPolling = 0
 
-
-    def onHeartbeat(self):
         # for now this uses the shelve database as its source of truth.
         if (self.currentlyPolling < len(self.macs)):
-            self.getPlantData(int(self.currentlyPolling))
-            if (self.currentlyPolling == len(self.macs) - 1):
-                Devices[1].Update(nValue=0,sValue="Off")
+            try:
+                self.getPlantData(int(self.currentlyPolling))
+            except:
+                Domoticz.Error("Can't get data from sensor " + str(self.macs[self.currentlyPolling]))
             self.currentlyPolling = self.currentlyPolling + 1
 
 
-    # function to create corresponding sensors in Domoticz if there are Mi Flower Mates which don't have them yet.
+    # function to create corresponding sensors in Domoticz if there are Parrot Flower which don't have them yet.
     def createSensors(self):
         # create the domoticz sensors if necessary
-        if ((len(Devices) - 1)/4) < len(self.macs):
+        if (len(Devices) / 4) < len(self.macs):
             Domoticz.Debug("Creating new sensors")
             # Create the sensors. Later we get the data.
             for idx, mac in enumerate(self.macs):
-                Domoticz.Debug("Creating new sensors for Parrot Flower Power & Pot at "+str(mac))
+                Domoticz.Debug("Creating new sensors for Parrot Flower Power & Pot at " + str(mac))
                 sensorBaseName = "#" + str(idx) + " "
 
-                sensorNumber = (idx*4) + 2
+                sensorNumber = (idx * 4) + 1
                 if sensorNumber not in Devices:
 
                     #moisture
                     sensorName = sensorBaseName + "Moisture"
-                    Domoticz.Debug("Creating first sensor, #"+str(sensorNumber))
-                    Domoticz.Debug("Creating first sensor, name: "+str(sensorName))
+                    Domoticz.Debug("Creating first sensor, #" + str(sensorNumber))
+                    Domoticz.Debug("Creating first sensor, name: " + str(sensorName))
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Percentage", Used=1).Create()
-                    Domoticz.Log("Created device: "+Devices[sensorNumber].Name)
+                    Domoticz.Log("Created device: " + sensorName)
 
                     #temperature
-                    sensorNumber = (idx*4) + 3
+                    sensorNumber = (idx * 4) + 2
                     sensorName = sensorBaseName + "Temperature"
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Temperature", Used=1).Create()
-                    Domoticz.Log("Created device: "+Devices[sensorNumber].Name)
+                    Domoticz.Log("Created device: " + sensorName)
 
                     #light
-                    sensorNumber = (idx*4) + 4
+                    sensorNumber = (idx * 4) + 3
                     sensorName = sensorBaseName + "Light"
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Illumination", Used=1).Create()
-                    Domoticz.Log("Created device: "+Devices[sensorNumber].Name)
+                    Domoticz.Log("Created device: " + sensorName)
 
                     #fertility
-                    sensorNumber = (idx*4) + 5
+                    sensorNumber = (idx * 4) + 4
                     sensorName = sensorBaseName + "Conductivity"
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Custom", Used=1).Create()
-                    Domoticz.Log("Created device: "+Devices[sensorNumber].Name)
+                    Domoticz.Log("Created device: " + sensorName)
 
 
     # function to poll a Flower Mate for its data
     def getPlantData(self, idx):
         #for idx, mac in enumerate(self.macs):
         mac = self.macs[idx]
-        Domoticz.Log("getting data from sensor: "+str(mac))
+        Domoticz.Log("Getting data from sensor: " + str(mac))
         poller = ParrotFlowerPoller(str(mac), self.backend)
 
         val_bat  = int("{}".format(poller.parameter_value(P_BATTERY)))
         nValue = 0
 
         #moisture
-        sensorNumber1 = (idx*4) + 2
+        sensorNumber1 = (idx * 4) + 1
         val_moist = "{}".format(poller.parameter_value(P_MOISTURE))
         Devices[sensorNumber1].Update(nValue=nValue, sValue=val_moist, BatteryLevel=val_bat)
         Domoticz.Log("moisture = " + str(val_moist))
 
         #temperature
-        sensorNumber2 = (idx*4) + 3
+        sensorNumber2 = (idx * 4) + 2
         val_temp = "{}".format(poller.parameter_value(P_TEMPERATURE))
         Devices[sensorNumber2].Update(nValue=nValue, sValue=val_temp, BatteryLevel=val_bat)
         Domoticz.Log("temperature = " + str(val_temp))
 
         #light
-        sensorNumber3 = (idx*4) + 4
+        sensorNumber3 = (idx * 4) + 3
         val_lux = "{}".format(poller.parameter_value(P_LIGHT))
         Devices[sensorNumber3].Update(nValue=nValue, sValue=val_lux, BatteryLevel=val_bat)
         Domoticz.Log("light = " + str(val_lux))
 
         #fertility
-        sensorNumber4 = (idx*4) + 5
+        sensorNumber4 = (idx * 4) + 4
         val_cond = "{}".format(poller.parameter_value(P_CONDUCTIVITY))
         Devices[sensorNumber4].Update(nValue=nValue, sValue=val_cond, BatteryLevel=val_bat)
         Domoticz.Log("conductivity = " + str(val_cond))
@@ -233,17 +252,21 @@ class BasePlugin:
 global _plugin
 _plugin = BasePlugin()
 
+
 def onStart():
     global _plugin
     _plugin.onStart()
+
 
 def onStop():
     global _plugin
     _plugin.onStop()
 
+
 def onCommand(Unit, Command, Level, Hue):
     global _plugin
     _plugin.onCommand(Unit, Command, Level, Hue)
+
 
 def onHeartbeat():
     global _plugin
