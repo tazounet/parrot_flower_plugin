@@ -9,7 +9,7 @@ import sys
 from btlewrap import available_backends, BluepyBackend, GatttoolBackend, PygattBackend
 
 from parrot_flower.parrot_flower_poller import ParrotFlowerPoller, \
-    P_CONDUCTIVITY, P_MOISTURE, P_LIGHT, P_TEMPERATURE, P_BATTERY
+    P_CONDUCTIVITY, P_MOISTURE, P_LIGHT, P_AIR_TEMPERATURE, P_SOIL_TEMPERATURE, P_BATTERY
 from parrot_flower import parrot_flower_scanner
 
 
@@ -27,7 +27,9 @@ def poll(args):
     print("Getting data from Parrot Flower Power & Pot")
     print("FW: {}".format(poller.firmware_version()))
     print("Name: {}".format(poller.name()))
-    print("Temperature: {}".format(poller.parameter_value(P_TEMPERATURE)))
+    print("Batterie: {}".format(poller.parameter_value(P_BATTERY)))
+    print("Air Temperature: {}".format(poller.parameter_value(P_AIR_TEMPERATURE)))
+    print("Sol Temperature: {}".format(poller.parameter_value(P_SOIL_TEMPERATURE)))
     print("Moisture: {}".format(poller.parameter_value(P_MOISTURE)))
     print("Light: {}".format(poller.parameter_value(P_LIGHT)))
     print("Conductivity: {}".format(poller.parameter_value(P_CONDUCTIVITY)))

@@ -10,17 +10,19 @@ from btlewrap.base import BluetoothInterface, BluetoothBackendException
 
 # sudo gatttool --device=A0:14:3D:XX:XX:XX --char-desc -a 0x03 --adapter=hci0
 # sudo node node_modules/noble/examples/peripheral-explorer.js a0:14:3d:xx:xx:xx
-_HANDLE_READ_BATTERY = 0x4B
+_HANDLE_READ_BATTERY = 0x4C
 _HANDLE_READ_VERSION = 0x18
-_HANDLE_READ_NAME = 0x03
+_HANDLE_READ_NAME = 0x82 #0x03
 
-_HANDLE_READ_TEMPERATURE = 0x44
-_HANDLE_READ_MOISTURE = 0x41
+_HANDLE_READ_AIR_TEMPERATURE = 0x43
+_HANDLE_READ_SOIL_TEMPERATURE = 0x2D
+_HANDLE_READ_MOISTURE = 0x3F
 _HANDLE_READ_LIGHT = 0x47
-_HANDLE_READ_CONDUCTIVITY = 0x31 # ??
+_HANDLE_READ_CONDUCTIVITY = 0x29
 
 
-P_TEMPERATURE = "temperature"
+P_AIR_TEMPERATURE = "air_temperature"
+P_SOIL_TEMPERATURE = "soil_temperature"
 P_LIGHT = "light"
 P_MOISTURE = "moisture"
 P_CONDUCTIVITY = "conductivity"
@@ -31,16 +33,16 @@ _LOGGER = logging.getLogger(__name__)
 
 class ParrotFlowerPoller(object):
     """"
-    A class to read data from Mi Flora plant sensors.
+    A class to read data from Parrot plant sensors.
     """
 
     def __init__(self, mac, backend, cache_timeout=600, adapter='hci0'):
         """
-        Initialize a Mi Flora Poller for the given MAC address.
+        Initialize a Parrot Flower & Pot Poller for the given MAC address.
         """
 
         self._mac = mac
-        self._bt_interface = BluetoothInterface(backend, adapter)
+        self._bt_interface = BluetoothInterface(backend=backend, adapter=adapter)
         self._cache = None
         self._cache_timeout = timedelta(seconds=cache_timeout)
         self._last_read = None
@@ -56,7 +58,7 @@ class ParrotFlowerPoller(object):
 
         if not name:
             raise BluetoothBackendException("Could not read data from sensor %s" % self._mac)
-        return ''.join(chr(n) for n in name)
+        return ''.join(chr(n) for n in name[:-3])
 
 
     def firmware_version(self):
@@ -83,23 +85,36 @@ class ParrotFlowerPoller(object):
                 raise BluetoothBackendException("Could not read data from sensor %s" % self._mac)
             self._cache[P_BATTERY] = ord(battery)
 
-            # temperature
-            temperature = connection.read_handle(_HANDLE_READ_TEMPERATURE)  # pylint: disable=no-member
-            if not temperature:
+            # air temperature
+            air_temperature = connection.read_handle(_HANDLE_READ_AIR_TEMPERATURE)  # pylint: disable=no-member
+            if not air_temperature:
                 raise BluetoothBackendException("Could not read data from sensor %s" % self._mac)
-            self._cache[P_TEMPERATURE] = round(unpack("<f",temperature)[0], 1)
+            self._cache[P_AIR_TEMPERATURE] = round(unpack("<f",air_temperature)[0], 1)
+
+            # soil temperature
+            raw_soil_temperature = connection.read_handle(_HANDLE_READ_SOIL_TEMPERATURE)  # pylint: disable=no-member
+            if not raw_soil_temperature:
+                raise BluetoothBackendException("Could not read data from sensor %s" % self._mac)
+            soil_temperature = 0.00000003044 * pow(unpack("<H",raw_soil_temperature)[0], 3.0) - 0.00008038 * pow(unpack("<H",raw_soil_temperature)[0], 2.0) + unpack("<H",raw_soil_temperature)[0] * 0.1149 - 30.49999999999999
+            if soil_temperature < -10.0:
+                soil_temperature = -10.0
+            elif soil_temperature > 55.0:
+                soil_temperature = 55.0
+            self._cache[P_SOIL_TEMPERATURE] = round(soil_temperature, 1)
+            #self._cache[P_SOIL_TEMPERATURE] = round(unpack("<f",soil_temperature)[0], 1)
 
             # moisture
             moisture = connection.read_handle(_HANDLE_READ_MOISTURE)  # pylint: disable=no-member
             if not moisture:
                 raise BluetoothBackendException("Could not read data from sensor %s" % self._mac)
-            self._cache[P_MOISTURE] = round(unpack("<f",moisture)[0], 1)
+            self._cache[P_MOISTURE] = round(unpack("<f",moisture)[0])
 
             # light
             light = connection.read_handle(_HANDLE_READ_LIGHT)  # pylint: disable=no-member
             if not light:
                 raise BluetoothBackendException("Could not read data from sensor %s" % self._mac)
-            self._cache[P_LIGHT] = round(unpack("<f",light)[0], 1)
+            #light_in_lux = round(unpack("<f",light)[0] * 54)
+            self._cache[P_LIGHT] = round(unpack("<f",light)[0], 2)
 
             # conductivity
             conductivity = connection.read_handle(_HANDLE_READ_CONDUCTIVITY)  # pylint: disable=no-member

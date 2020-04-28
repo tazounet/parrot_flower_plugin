@@ -6,8 +6,8 @@
     <params>
         <param field="Mode1" label="Device selection" width="300px" required="true">
             <options>
-                <option label="Automatic scanning" value="auto" default="true"/>
-                <option label="Manual selection (add below)" value="manual"/>
+                <option label="Automatic scanning" value="auto"/>
+                <option label="Manual selection (add below)" value="manual" default="true"/>
             </options>
         </param>
         <param field="Mode2" label="Devices mac adresses, capitalised and comma separated" width="300px" required="false" default=""/>
@@ -40,7 +40,7 @@ from parrot_flower import parrot_flower_scanner
 import parrot_flower
 try:
     from parrot_flower.parrot_flower_poller import ParrotFlowerPoller, \
-        P_CONDUCTIVITY, P_MOISTURE, P_LIGHT, P_TEMPERATURE, P_BATTERY
+        P_CONDUCTIVITY, P_MOISTURE, P_LIGHT, P_AIR_TEMPERATURE, P_BATTERY, P_SOIL_TEMPERATURE
 except:
     bluepyError = 1
 try:
@@ -136,14 +136,14 @@ class BasePlugin:
     # function to create corresponding sensors in Domoticz if there are Parrot Flower which don't have them yet.
     def createSensors(self):
         # create the domoticz sensors if necessary
-        if (len(Devices) / 4) < len(self.macs):
+        if (len(Devices) / 5) < len(self.macs):
             Domoticz.Debug("Creating new sensors")
             # Create the sensors. Later we get the data.
             for idx, mac in enumerate(self.macs):
                 Domoticz.Debug("Creating new sensors for Parrot Flower Power & Pot at " + str(mac))
                 sensorBaseName = "#" + str(idx) + " "
 
-                sensorNumber = (idx * 4) + 1
+                sensorNumber = (idx * 5) + 1
                 if sensorNumber not in Devices:
 
                     #moisture
@@ -153,24 +153,29 @@ class BasePlugin:
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Percentage", Used=1).Create()
                     Domoticz.Log("Created device: " + sensorName)
 
-                    #temperature
-                    sensorNumber = (idx * 4) + 2
-                    sensorName = sensorBaseName + "Temperature"
+                    #air temperature
+                    sensorNumber = (idx * 5) + 2
+                    sensorName = sensorBaseName + "Air Temperature"
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Temperature", Used=1).Create()
                     Domoticz.Log("Created device: " + sensorName)
 
                     #light
-                    sensorNumber = (idx * 4) + 3
+                    sensorNumber = (idx * 5) + 3
                     sensorName = sensorBaseName + "Light"
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Illumination", Used=1).Create()
                     Domoticz.Log("Created device: " + sensorName)
 
                     #fertility
-                    sensorNumber = (idx * 4) + 4
+                    sensorNumber = (idx * 5) + 4
                     sensorName = sensorBaseName + "Conductivity"
                     Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Custom", Used=1).Create()
                     Domoticz.Log("Created device: " + sensorName)
 
+                    #soil temperature
+                    sensorNumber = (idx * 5) + 5
+                    sensorName = sensorBaseName + "Soil Temperature"
+                    Domoticz.Device(Name=sensorName, Unit=sensorNumber, TypeName="Temperature", Used=1).Create()
+                    Domoticz.Log("Created device: " + sensorName)
 
     # function to poll a Flower Mate for its data
     def getPlantData(self, idx):
@@ -183,29 +188,34 @@ class BasePlugin:
         nValue = 0
 
         #moisture
-        sensorNumber1 = (idx * 4) + 1
+        sensorNumber1 = (idx * 5) + 1
         val_moist = "{}".format(poller.parameter_value(P_MOISTURE))
         Devices[sensorNumber1].Update(nValue=nValue, sValue=val_moist, BatteryLevel=val_bat)
         Domoticz.Log("moisture = " + str(val_moist))
 
-        #temperature
-        sensorNumber2 = (idx * 4) + 2
-        val_temp = "{}".format(poller.parameter_value(P_TEMPERATURE))
-        Devices[sensorNumber2].Update(nValue=nValue, sValue=val_temp, BatteryLevel=val_bat)
-        Domoticz.Log("temperature = " + str(val_temp))
+        #air temperature
+        sensorNumber2 = (idx * 5) + 2
+        val_air_temp = "{}".format(poller.parameter_value(P_AIR_TEMPERATURE))
+        Devices[sensorNumber2].Update(nValue=nValue, sValue=val_air_temp, BatteryLevel=val_bat)
+        Domoticz.Log("air temperature = " + str(val_air_temp))
 
         #light
-        sensorNumber3 = (idx * 4) + 3
-        val_lux = "{}".format(poller.parameter_value(P_LIGHT))
+        sensorNumber3 = (idx * 5) + 3
+        val_lux = "{}".format(poller.parameter_value(P_LIGHT) * 54)
         Devices[sensorNumber3].Update(nValue=nValue, sValue=val_lux, BatteryLevel=val_bat)
         Domoticz.Log("light = " + str(val_lux))
 
         #fertility
-        sensorNumber4 = (idx * 4) + 4
+        sensorNumber4 = (idx * 5) + 4
         val_cond = "{}".format(poller.parameter_value(P_CONDUCTIVITY))
         Devices[sensorNumber4].Update(nValue=nValue, sValue=val_cond, BatteryLevel=val_bat)
         Domoticz.Log("conductivity = " + str(val_cond))
 
+        #soil temperature
+        sensorNumber5 = (idx * 5) + 5
+        val_soil_temp = "{}".format(poller.parameter_value(P_SOIL_TEMPERATURE))
+        Devices[sensorNumber5].Update(nValue=nValue, sValue=val_soil_temp, BatteryLevel=val_bat)
+        Domoticz.Log("soil temperature = " + str(val_soil_temp))
 
     # function to scan for devices, and store and compare the outcome
     def floraScan(self):
@@ -278,4 +288,3 @@ def parseCSV(strCSV):
     for value in strCSV.split(","):
         listvals.append(value)
     return listvals
-
